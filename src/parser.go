@@ -8,6 +8,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"src/githubutils"
 )
 
 // options used while creating the content
@@ -111,7 +113,7 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string {
 	output := []string{}
 	childDir := []string{}
-	aTree := utils.githubutils.GetChildren(repoTreeUrl)
+	aTree := githubutils.GetChildren(repoTreeUrl)
 	for _, aNode := range aTree {
 		fileOrDirName := extractName(aNode.Path)
 		completePath := path.Join("/", aNode.Path)
