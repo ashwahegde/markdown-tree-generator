@@ -116,3 +116,5 @@ Output looks like this:
 -   [web](/web)
     -   [Introduction to HTML5.pdf](</web/Introduction to HTML5.pdf>)
 ```
+
+Visualization looks like [this](https://github.com/ashwahegde/my_coursera_certficates#categories)
