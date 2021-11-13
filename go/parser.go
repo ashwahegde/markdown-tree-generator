@@ -71,6 +71,11 @@ func Contains(sliceOfStrings []string, searchString string) bool {
 	return false
 }
 
+func extractName(inpString string) string {
+	_, fileOrDirName := path.Split(inpString)
+	return fileOrDirName
+}
+
 func getContentOfDirectory(basePath string, relativePath string, selectedOption ParseOptions) []string {
 	files, err := ioutil.ReadDir(path.Join(basePath, relativePath))
 	if err != nil {
@@ -103,18 +108,53 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 	return output
 }
 
+func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string {
+	output := []string{}
+	childDir := []string{}
+	aTree := utils.githubutils.GetChildren(repoTreeUrl)
+	for _, aNode := range aTree {
+		fileOrDirName := extractName(aNode.Path)
+		completePath := path.Join("/", aNode.Path)
+		if Contains(selectedOption.ignoreList, fileOrDirName) {
+			log.Printf("ignoring %s", aNode.Path)
+		} else {
+			currentLine := selectedOption.pointStyle + strings.Repeat(" ", selectedOption.spaceCount-1) + "[" + fileOrDirName + "]"
+			if strings.Contains(completePath, " ") {
+				currentLine += "(<" + completePath + ">)"
+			} else {
+				currentLine += "(" + completePath + ")"
+			}
+			output = append(output, currentLine)
+			if aNode.RType == "tree" {
+				childDir = getContentOfDirectory(aNode.Url, selectedOption)
+				for _, aPoint := range childDir {
+					// change this spacing
+					output = append(output, strings.Repeat(" ", selectedOption.spaceCount)+aPoint)
+				}
+			}
+		}
+	}
+	return output
+}
 func main() {
 	// directoryPath is directory in which contents are tabularized
 	fmt.Println(os.Args)
 	osArgs := os.Args[1:]
 	selectedOptions := commandParser(osArgs)
 	log.Println(selectedOptions, osArgs)
-	currentWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Current Working Direcoty: ", currentWorkingDirectory)
-	for _, files := range getContentOfDirectory(selectedOptions.directoryPath, "/", selectedOptions) {
-		fmt.Println(files)
+	// currentWorkingDirectory, err := os.Getwd()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// log.Println("Current Working Direcoty: ", currentWorkingDirectory)
+	if strings.Contains(selectedOptions.directoryPath, "https://") {
+		// for _, files := range getContentOfRepo(selectedOptions.directoryPath, "/", selectedOptions) {
+		// 	fmt.Println(files)
+		// }
+		fmt.Println("got it")
+	} else {
+		for _, files := range getContentOfDirectory(selectedOptions.directoryPath, "/", selectedOptions) {
+			fmt.Println(files)
+		}
 	}
 }
