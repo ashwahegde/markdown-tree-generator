@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"mdtreegen/githubutils"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
 	"strings"
-
-	"src/githubutils"
 )
 
 // options used while creating the content
@@ -84,7 +84,7 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 		log.Fatal(err)
 	}
 	output := []string{}
-	childDir := []string{}
+	// childDir := []string{}
 	for _, f := range files {
 		// ignore directory/file mentioned
 		// change this to pointer
@@ -99,7 +99,7 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 			}
 			output = append(output, currentLine)
 			if f.IsDir() {
-				childDir = getContentOfDirectory(basePath, path.Join(relativePath, f.Name()), selectedOption)
+				childDir := getContentOfDirectory(basePath, path.Join(relativePath, f.Name()), selectedOption)
 				for _, aPoint := range childDir {
 					// change this spacing
 					output = append(output, strings.Repeat(" ", selectedOption.spaceCount)+aPoint)
@@ -111,8 +111,9 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 }
 
 func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string {
+	fmt.Println(repoTreeUrl)
 	output := []string{}
-	childDir := []string{}
+	// childDir := []string{}
 	aTree := githubutils.GetChildren(repoTreeUrl)
 	for _, aNode := range aTree {
 		fileOrDirName := extractName(aNode.Path)
@@ -128,7 +129,7 @@ func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string 
 			}
 			output = append(output, currentLine)
 			if aNode.RType == "tree" {
-				childDir = getContentOfDirectory(aNode.Url, selectedOption)
+				childDir := getContentOfRepo(aNode.Url, selectedOption)
 				for _, aPoint := range childDir {
 					// change this spacing
 					output = append(output, strings.Repeat(" ", selectedOption.spaceCount)+aPoint)
@@ -140,7 +141,6 @@ func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string 
 }
 func main() {
 	// directoryPath is directory in which contents are tabularized
-	fmt.Println(os.Args)
 	osArgs := os.Args[1:]
 	selectedOptions := commandParser(osArgs)
 	log.Println(selectedOptions, osArgs)
@@ -150,10 +150,15 @@ func main() {
 	// }
 	// log.Println("Current Working Direcoty: ", currentWorkingDirectory)
 	if strings.Contains(selectedOptions.directoryPath, "https://") {
-		// for _, files := range getContentOfRepo(selectedOptions.directoryPath, "/", selectedOptions) {
-		// 	fmt.Println(files)
-		// }
-		fmt.Println("got it")
+		inpUrl, err := url.Parse(selectedOptions.directoryPath)
+		if err != nil {
+			log.Fatal("Invalid repository URL")
+			os.Exit(1)
+		}
+		fmt.Println(inpUrl.Path)
+		for _, files := range getContentOfRepo("https://api.github.com/repos"+inpUrl.Path+"/git/trees/master", selectedOptions) {
+			fmt.Println(files)
+		}
 	} else {
 		for _, files := range getContentOfDirectory(selectedOptions.directoryPath, "/", selectedOptions) {
 			fmt.Println(files)
