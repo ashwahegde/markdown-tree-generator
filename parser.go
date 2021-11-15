@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"mdtreegen/githubutils"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
 	"strings"
-
-	"src/githubutils"
+	"sync"
 )
 
 // options used while creating the content
@@ -84,7 +85,7 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 		log.Fatal(err)
 	}
 	output := []string{}
-	childDir := []string{}
+	// childDir := []string{}
 	for _, f := range files {
 		// ignore directory/file mentioned
 		// change this to pointer
@@ -99,7 +100,7 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 			}
 			output = append(output, currentLine)
 			if f.IsDir() {
-				childDir = getContentOfDirectory(basePath, path.Join(relativePath, f.Name()), selectedOption)
+				childDir := getContentOfDirectory(basePath, path.Join(relativePath, f.Name()), selectedOption)
 				for _, aPoint := range childDir {
 					// change this spacing
 					output = append(output, strings.Repeat(" ", selectedOption.spaceCount)+aPoint)
@@ -111,8 +112,8 @@ func getContentOfDirectory(basePath string, relativePath string, selectedOption 
 }
 
 func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string {
+	fmt.Println(repoTreeUrl)
 	output := []string{}
-	childDir := []string{}
 	aTree := githubutils.GetChildren(repoTreeUrl)
 	for _, aNode := range aTree {
 		fileOrDirName := extractName(aNode.Path)
@@ -128,7 +129,7 @@ func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string 
 			}
 			output = append(output, currentLine)
 			if aNode.RType == "tree" {
-				childDir = getContentOfDirectory(aNode.Url, selectedOption)
+				childDir := getContentOfRepo(aNode.Url, selectedOption)
 				for _, aPoint := range childDir {
 					// change this spacing
 					output = append(output, strings.Repeat(" ", selectedOption.spaceCount)+aPoint)
@@ -138,22 +139,105 @@ func getContentOfRepo(repoTreeUrl string, selectedOption ParseOptions) []string 
 	}
 	return output
 }
+
+func getContentOfRepoParallel(repoTreeUrl string, selectedOption ParseOptions, prevResult chan map[string][]string, prevWg *sync.WaitGroup, prevSha string, prefPath string) {
+	fmt.Println(repoTreeUrl)
+	output := map[string]string{}
+	aTree := githubutils.GetChildren(repoTreeUrl)
+	result := make(chan map[string][]string)
+	var wg sync.WaitGroup
+	for _, aNode := range aTree {
+		fileOrDirName := extractName(aNode.Path)
+		completePath := path.Join(prefPath, aNode.Path)
+		if Contains(selectedOption.ignoreList, fileOrDirName) {
+			log.Printf("ignoring %s", aNode.Path)
+		} else {
+			currentLine := selectedOption.pointStyle + strings.Repeat(" ", selectedOption.spaceCount-1) + "[" + fileOrDirName + "]"
+			if strings.Contains(completePath, " ") {
+				currentLine += "(<" + completePath + ">)"
+			} else {
+				currentLine += "(" + completePath + ")"
+			}
+			output[aNode.Sha] = currentLine
+			if aNode.RType == "tree" {
+				wg.Add(1)
+				go getContentOfRepoParallel(aNode.Url, selectedOption, result, &wg, aNode.Sha, completePath)
+			}
+		}
+	}
+	outList := []string{}
+	// Close channel after goroutines complete.
+	go func() {
+		wg.Wait()
+		close(result)
+	}()
+	// get all results
+	resultObt := map[string][]string{}
+	for childDir := range result {
+		for sha, allSubLines := range childDir {
+			resultObt[sha] = allSubLines
+		}
+	}
+	// iterate over each childs
+	for sha, stringSlice := range output {
+		outList = append(outList, stringSlice)
+		if val, ok := resultObt[sha]; ok {
+			for _, aPoint := range val {
+				outList = append(
+					outList,
+					strings.Repeat(" ", selectedOption.spaceCount)+aPoint,
+				)
+			}
+		}
+	}
+	finalOutput := map[string][]string{}
+	finalOutput[prevSha] = outList
+	prevResult <- finalOutput
+	prevWg.Done()
+}
+
 func main() {
 	// directoryPath is directory in which contents are tabularized
-	fmt.Println(os.Args)
 	osArgs := os.Args[1:]
 	selectedOptions := commandParser(osArgs)
 	log.Println(selectedOptions, osArgs)
-	// currentWorkingDirectory, err := os.Getwd()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// log.Println("Current Working Direcoty: ", currentWorkingDirectory)
+
 	if strings.Contains(selectedOptions.directoryPath, "https://") {
-		// for _, files := range getContentOfRepo(selectedOptions.directoryPath, "/", selectedOptions) {
+		// // serial
+		// inpUrl, err := url.Parse(selectedOptions.directoryPath)
+		// if err != nil {
+		// 	log.Fatal("Invalid repository URL")
+		// 	os.Exit(1)
+		// }
+		// fmt.Println(inpUrl.Path)
+		// for _, files := range getContentOfRepo("https://api.github.com/repos"+inpUrl.Path+"/git/trees/master", selectedOptions) {
 		// 	fmt.Println(files)
 		// }
-		fmt.Println("got it")
+		// Parallel
+		inpUrl, err := url.Parse(selectedOptions.directoryPath)
+		if err != nil {
+			log.Fatal("Invalid repository URL")
+			os.Exit(1)
+		}
+		fmt.Println(inpUrl.Path)
+		result := make(chan map[string][]string)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go getContentOfRepoParallel("https://api.github.com/repos"+inpUrl.Path+"/git/trees/master", selectedOptions, result, &wg, "1234", "/")
+		go func() {
+			wg.Wait()
+			close(result)
+		}()
+		fmt.Println(" ")
+		for files := range result {
+			// fmt.Println(files)
+			for _, file := range files {
+				for _, eachFile := range file {
+					fmt.Println(eachFile)
+				}
+			}
+		}
+
 	} else {
 		for _, files := range getContentOfDirectory(selectedOptions.directoryPath, "/", selectedOptions) {
 			fmt.Println(files)
