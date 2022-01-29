@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"mdtreegen/githubutils"
 	"net/url"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/ashwahegde/mdtreegen/githubutils"
 )
 
 // options used while creating the content
